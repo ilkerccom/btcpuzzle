@@ -1,0 +1,26 @@
+--- Vanity.h.original
++++ Vanity.h.modified
+@@ -45,6 +45,13 @@
+   class VanitySearch {
+   
+   public:
++  
++    // Pool mode callback
++    typedef std::function<void(std::string, std::string)> KeyFoundCallback;
++    void setKeyFoundCallback(KeyFoundCallback cb) { 
++        keyCallback = cb; 
++    }
++    
+     VanitySearch(Secp256K1 *secp, std::vector<std::string> &inputPrefixes, std::string seed, int searchMode,
+                  bool useGpu, bool stop, std::string outputFile, bool useSSE, uint32_t maxFound,
+                  uint64_t rekey, bool caseSensitive, Point &startPuKey, bool partialkeyFromFile,
+@@ -110,6 +117,9 @@
+     double startTime;
+   
+     int searchType;
++    
++    // Pool mode callback
++    KeyFoundCallback keyCallback;
+   
+     bool hasPattern;
+     bool onlyFull;
