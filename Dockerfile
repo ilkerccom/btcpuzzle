@@ -1,22 +1,23 @@
 # btcpuzzle.info Docker file
 
 # -------- BUILD STAGE --------
-FROM nvidia/cuda:12.0.0-devel-ubuntu20.04 AS build
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 AS build
 
 WORKDIR /build
 RUN apt-get update && apt-get install -y \
-    build-essential libcurl4-openssl-dev libssl-dev
+    build-essential g++-9 libcurl4-openssl-dev libssl-dev
 
 COPY . .
 RUN make gpu=1 all
 
 
 # -------- RUNTIME STAGE --------
-FROM nvidia/cuda:12.0.0-runtime-ubuntu20.04
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y \
-    build-essential libcurl4-openssl-dev libssl-dev dos2unix
+    build-essential libcurl4-openssl-dev libssl-dev dos2unix \
+    ca-certificates
 
 ENV PUZZLE=71
 ENV USERTOKEN=""

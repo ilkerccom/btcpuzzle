@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+
 GPUCOUNTS=$(nvidia-smi -L | wc -l)
 
 if [ -z "$WORKERNAME" ]; then

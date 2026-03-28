@@ -21,7 +21,9 @@ GENCODE = \
 -gencode arch=compute_80,code=sm_80 \
 -gencode arch=compute_86,code=sm_86 \
 -gencode arch=compute_89,code=sm_89 \
--gencode arch=compute_86,code=compute_86
+-gencode arch=compute_90,code=sm_90 \
+-gencode arch=compute_100,code=sm_100 \
+-gencode arch=compute_100,code=compute_100
 
 ifdef gpu
 
@@ -45,7 +47,7 @@ OBJET = $(addprefix $(OBJDIR)/, \
 endif
 
 CXX        = g++-9
-CUDA       = /usr/local/cuda-12.0
+CUDA       = /usr/local/cuda-12.8
 CXXCUDA    = /usr/bin/g++-9
 NVCC       = $(CUDA)/bin/nvcc
 
