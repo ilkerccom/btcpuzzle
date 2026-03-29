@@ -30,6 +30,7 @@ do
   [ -n "$PUBKEY" ] && CMD+=("-pubkey" "$PUBKEY")
   [ -n "$TELEGRAM_TOKEN" ] && CMD+=("-telegramtoken" "$TELEGRAM_TOKEN")
   [ -n "$TELEGRAM_CHATID" ] && CMD+=("-telegramchatid" "$TELEGRAM_CHATID")
+  [ -n "$CUSTOM_RANGE" ] && CMD+=("-customrange" "$CUSTOM_RANGE")
 
   CURRENT_WORKER="${BASE_WORKER}_${i}"
   CMD+=("-worker" "$CURRENT_WORKER")

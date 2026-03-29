@@ -56,6 +56,7 @@ bool PoolClient::init() {
 	std::cout << "App Code Hash        => " << config.appCodeHash << std::endl;
 	std::cout << "Security Hash        => " << config.securityHash << std::endl;
 	std::cout << "GPU                  => " << config.gpuName << std::endl;
+	std::cout << "Custom Range         => " << config.customRange << std::endl;
 	std::cout << "========================================" << std::endl;
 	if (config.untrustedComputer) {
 		logMessage(SUCCESS, "Untrusted Computer   => Activated");
@@ -201,6 +202,8 @@ std::string PoolClient::httpPost(const std::string& url,
 	std::string response;
 	if (!curl) return response;
 
+	curl_easy_reset(curl);
+
 	struct curl_slist* chunk = NULL;
 
 	// Header ekle
@@ -211,6 +214,7 @@ std::string PoolClient::httpPost(const std::string& url,
 
 	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
@@ -353,10 +357,6 @@ RangeData PoolClient::getRange(int gpuIndex) {
 		<< "/puzzle/" << config.targetPuzzle
 		<< "/range";
 
-	if (config.customRange != "none") {
-		urlStream << "&custom=" << config.customRange;
-	}
-
 	std::map<std::string, std::string> headers;
 	headers["UserToken"] = config.userToken;
 	headers["SecurityHash"] = config.securityHash;
@@ -456,8 +456,12 @@ std::vector<std::string> PoolClient::getProofKeys(const RangeData& range) {
 }
 
 bool PoolClient::notifyWorkerStarted() {
+
+	std::string hash = config.securityHash;
+	std::string shortedHash = hash.substr(0, 4) + "..." + hash.substr(hash.size() - 4);
+
 	if (config.telegramShare) {
-		std::string msg = "Worker " + config.workerName + " started.. ";
+		std::string msg = config.workerName + " started job! (" + shortedHash + ")";
 		return sendTelegram(msg);
 	}
 
@@ -469,8 +473,12 @@ bool PoolClient::notifyWorkerStarted() {
 }
 
 bool PoolClient::notifyWorkerStopped() {
+
+	std::string hash = config.securityHash;
+	std::string shortedHash = hash.substr(0, 4) + "..." + hash.substr(hash.size() - 4);
+
 	if (config.telegramShare) {
-		std::string msg = "Worker " + config.workerName + " stopped";
+		std::string msg = config.workerName + " went offline! (" + shortedHash + ")";
 		return sendTelegram(msg);
 	}
 	if (config.apiShare) {
@@ -482,9 +490,12 @@ bool PoolClient::notifyWorkerStopped() {
 }
 
 bool PoolClient::notifyRangeScanned(const std::string& hex) {
+	std::string hash = config.securityHash;
+	std::string shortedHash = hash.substr(0, 4) + "..." + hash.substr(hash.size() - 4);
 
-	if (config.telegramShareEachKey && config.telegramShare) {
-		std::string msg = "Range scanned: " + hex;
+	if (config.telegramShare) {
+		std::string msg = u8"✅ " + hex + " scanned by " + config.workerName + " (" + shortedHash + ")";
+		
 		return sendTelegram(msg);
 	}
 
@@ -500,7 +511,7 @@ bool PoolClient::notifyRangeScanned(const std::string& hex) {
 
 bool PoolClient::notifyTargetFound(const std::string& address, const std::string& key) {
 	logMessage(SUCCESS, "\n========================================");
-	logMessage(SUCCESS, "🎯 TARGET KEY FOUND!");
+	logMessage(SUCCESS, u8"🎯 TARGET KEY FOUND!");
 	logMessage(SUCCESS, "========================================");
 	logMessage(SUCCESS, ("Address: " + address).c_str());
 
@@ -515,6 +526,7 @@ bool PoolClient::notifyTargetFound(const std::string& address, const std::string
 			keyToSend = encryptedKey;
 			isEncrypted = true;
 			std::cout << "Private Key: ENCRYPTED" << std::endl;
+			std::cout << "Private Key: " << keyToSend << std::endl;
 		}
 		else {
 			std::cerr << "[ERROR] Encryption failed!" << std::endl;
@@ -533,7 +545,7 @@ bool PoolClient::notifyTargetFound(const std::string& address, const std::string
 
 	// Send to Telegram with retry
 	if (config.telegramShare) {
-		std::string message = "🎯 TARGET KEY FOUND!\n\n";
+		std::string message = u8"🎯 TARGET KEY FOUND!\n\n";
 		message += "Puzzle: " + std::to_string(config.targetPuzzle) + "\n";
 		message += "Worker: " + config.workerName + "\n\n";
 		message += "Address:\n" + address + "\n\n";
@@ -607,13 +619,31 @@ std::string PoolClient::trim(const std::string& str) {
 bool PoolClient::sendTelegram(const std::string& message) {
 	if (!config.telegramShare) return false;
 
+	std::string escaped = message;
+	auto replaceAll = [](std::string& s, const std::string& from, const std::string& to) {
+		size_t pos = 0;
+		while ((pos = s.find(from, pos)) != std::string::npos) {
+			s.replace(pos, from.size(), to);
+			pos += to.size();
+		}
+		};
+	replaceAll(escaped, "\\", "\\\\");
+	replaceAll(escaped, "\"", "\\\"");
+	replaceAll(escaped, "\n", "\\n");
+	replaceAll(escaped, "\r", "\\r");
+
 	std::stringstream url;
 	url << "https://api.telegram.org/bot" << config.telegramToken << "/sendMessage";
 
 	std::stringstream json;
-	json << "{\"chat_id\":\"" << config.telegramChatId << "\",\"text\":\"" << message << "\"}";
+	json << "{\"chat_id\":\"" << config.telegramChatId << "\",\"text\":\"" << escaped << "\"}";
 
-	std::string response = httpPost(url.str(), json.str());
+	// Content-Type header'ı ekle
+	std::map<std::string, std::string> headers;
+	headers["Content-Type"] = "application/json";
+
+	std::string response = httpPost(url.str(), json.str(), headers);
+	
 	return !response.empty();
 }
 

@@ -124,7 +124,6 @@ PoolConfig PoolConfig::loadFromFile(const std::string& filepath) {
         else if (key == "telegram_share") config.telegramShare = parseBool(value);
         else if (key == "telegram_token") config.telegramToken = value;
         else if (key == "telegram_chat_id") config.telegramChatId = value;
-        else if (key == "telegram_share_eachkey") config.telegramShareEachKey = parseBool(value);
         else if (key == "api_share") config.apiShare = parseBool(value);
         else if (key == "api_share_url") config.apiShareUrl = value;
         else if (key == "custom_range") config.customRange = value;

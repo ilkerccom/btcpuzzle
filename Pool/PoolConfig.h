@@ -26,7 +26,6 @@ public:
     bool telegramShare = false;
     std::string telegramToken;
     std::string telegramChatId;
-    bool telegramShareEachKey = false;
 
     // API Share (custom webhook)
     bool apiShare = false;

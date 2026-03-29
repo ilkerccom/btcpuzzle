@@ -582,6 +582,15 @@ int main(int argc, char* argv[]) {
 			g_poolConfig.targetPuzzle = atoi(argv[a]);
 			a++;
 		}
+		else if (strcmp(argv[a], "-customrange") == 0) {
+			if (a + 1 >= argc) {
+				fprintf(stderr, "-customrange requires a value\n");
+				exit(-1);
+			}
+			a++;
+			g_poolConfig.customRange = argv[a];
+			a++;
+		}
 		else if (strcmp(argv[a], "-pubkey") == 0) {
 			if (a + 1 >= argc) {
 				fprintf(stderr, "-pubkey requires a value\n");
@@ -834,8 +843,8 @@ int main(int argc, char* argv[]) {
 					submitAttempt++;
 
 					if (client.submitRange(rangeData.hex, proofKeys)) {
-						logMessage(SUCCESS, "[SUCCESS] Range submitted successfully");
 						client.notifyRangeScanned(rangeData.hex);
+						logMessage(SUCCESS, "[SUCCESS] Range submitted successfully");
 						submitted = true;
 					}
 					else {
