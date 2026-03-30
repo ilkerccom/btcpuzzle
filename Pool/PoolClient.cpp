@@ -13,7 +13,20 @@
 #include "Logger.h"
 #include <fstream>
 #include <vector>
+#include <mutex>
 
+std::mutex logMutex;
+std::mutex pingMutex;
+
+void logToFile(int gpuIndex, const std::string& msg) {
+	std::lock_guard<std::mutex> lock(logMutex);
+	std::ofstream f("poolclient.log", std::ios::app);
+	if (!f.is_open()) return;
+	auto now = std::time(nullptr);
+	char buf[32];
+	std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+	f << "[" << buf << "][GPU" << gpuIndex << "] " << msg << "\n";
+}
 
 PoolClient::PoolClient(const PoolConfig& cfg)
 	: config(cfg), curl(nullptr), publicKey(nullptr),
@@ -38,6 +51,7 @@ bool PoolClient::init() {
 
 	if (!curl) {
 		logMessage(DANGER, "Failed to initialize CURL");
+		logToFile(config.gpuIndex, "ERROR init(): Failed to initialize CURL");
 		return false;
 	}
 
@@ -81,12 +95,16 @@ bool PoolClient::init() {
 	}
 	std::cout << "========================================" << std::endl;
 
+	// Pool client init
+	logToFile(config.gpuIndex, "Btcpuzzle.info client init() " + config.workerName);
+
 	return true;
 }
 
 bool PoolClient::loadPublicKeyFromString() {
 	if (config.publicKeyString.empty()) {
 		logMessage(DANGER, "No public key provided");
+		logToFile(config.gpuIndex, "ERROR loadPublicKeyFromString(): No public key provided");
 		return false;
 	}
 
@@ -94,6 +112,7 @@ bool PoolClient::loadPublicKeyFromString() {
 	BIO* bio = BIO_new_mem_buf(config.publicKeyString.c_str(), -1);
 	if (!bio) {
 		std::cerr << "Failed to create BIO from public key\n";
+		logToFile(config.gpuIndex, "ERROR loadPublicKeyFromString(): Failed to create BIO from public key");
 		return false;
 	}
 
@@ -105,6 +124,7 @@ bool PoolClient::loadPublicKeyFromString() {
 		logMessage(DANGER, "Failed to parse public key");
 		logMessage(DANGER, "Untrusted mode requires valid public key.");
 		logMessage(DANGER, "Make sure it starts with: -----BEGIN PUBLIC KEY-----");
+		logToFile(config.gpuIndex, "ERROR loadPublicKeyFromString(): Failed to parse public key (PEM_read_bio_RSA_PUBKEY returned null)");
 		std::cerr << "\n" + config.publicKeyString + "\n\n";
 		return false;
 	}
@@ -154,6 +174,7 @@ std::string PoolClient::encryptData(const std::string& data) {
 
 	if (result == -1) {
 		std::cerr << "Encryption failed\n";
+		logToFile(config.gpuIndex, "ERROR encryptData(): RSA_public_encrypt failed (result == -1)");
 		return "";
 	}
 
@@ -187,8 +208,8 @@ std::string PoolClient::httpGet(const std::string& url,
 		curl_easy_cleanup(curl);
 
 		if (res != CURLE_OK) {
-			// Hata logu
 			printf("CURL error: %s\n", curl_easy_strerror(res));
+			logToFile(config.gpuIndex, std::string("ERROR httpGet(") + url + "): " + curl_easy_strerror(res));
 			return "";
 		}
 	}
@@ -226,6 +247,7 @@ std::string PoolClient::httpPost(const std::string& url,
 
 	if (res != CURLE_OK) {
 		printf("CURL error: %s\n", curl_easy_strerror(res));
+		logToFile(config.gpuIndex, std::string("ERROR httpPost(") + url + "): " + curl_easy_strerror(res));
 		return "";
 	}
 
@@ -266,6 +288,7 @@ std::string PoolClient::httpPut(const std::string& url,
 	if (res != CURLE_OK) {
 		httpCode = 0;
 		printf("CURL error: %s\n", curl_easy_strerror(res));
+		logToFile(config.gpuIndex, std::string("ERROR httpPut(") + url + "): " + curl_easy_strerror(res));
 		return "";
 	}
 
@@ -368,6 +391,7 @@ RangeData PoolClient::getRange(int gpuIndex) {
 
 	if (response.empty()) {
 		result.error = "No response from API";
+		logToFile(config.gpuIndex, "ERROR getRange(): No response from API | URL: " + urlStream.str());
 		return result;
 	}
 
@@ -385,6 +409,7 @@ RangeData PoolClient::getRange(int gpuIndex) {
 		if (result.error.empty()) {
 			result.error = "Invalid API response";
 		}
+		logToFile(config.gpuIndex, "ERROR getRange(): " + result.error + " | Response: " + response);
 	}
 
 	return result;
@@ -408,7 +433,14 @@ bool PoolClient::submitRange(const std::string& hex, const std::vector<std::stri
 	long httpCode = 0;
 	std::string response = httpPut(url, "", headers, httpCode);
 
-	if (response.empty()) return false;
+	if (response.empty()) {
+		logToFile(config.gpuIndex, "ERROR submitRange(hex=" + hex + "): Empty response from API");
+		return false;
+	}
+
+	if (httpCode != 200) {
+		logToFile(config.gpuIndex, "ERROR submitRange(hex=" + hex + "): HTTP " + std::to_string(httpCode) + " | Response: " + response);
+	}
 
 	if (httpCode == 200) {
 		rangesScanned++;
@@ -462,12 +494,16 @@ bool PoolClient::notifyWorkerStarted() {
 
 	if (config.telegramShare) {
 		std::string msg = config.workerName + " started job! (" + shortedHash + ")";
-		return sendTelegram(msg);
+		bool ok = sendTelegram(msg);
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyWorkerStarted(): Telegram send failed for worker " + config.workerName);
+		return ok;
 	}
 
 	if (config.apiShare) {
 		std::map<std::string, std::string> data;
-		return sendApiShare("workerStarted", data);
+		bool ok = sendApiShare("workerStarted", data);
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyWorkerStarted(): API share send failed for worker " + config.workerName);
+		return ok;
 	}
 	return true;
 }
@@ -479,12 +515,15 @@ bool PoolClient::notifyWorkerStopped() {
 
 	if (config.telegramShare) {
 		std::string msg = config.workerName + " went offline! (" + shortedHash + ")";
-		return sendTelegram(msg);
+		bool ok = sendTelegram(msg);
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyWorkerStopped(): Telegram send failed for worker " + config.workerName);
+		return ok;
 	}
 	if (config.apiShare) {
 		std::map<std::string, std::string> data;
-
-		return sendApiShare("workerExited", data);
+		bool ok = sendApiShare("workerExited", data);
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyWorkerStopped(): API share send failed for worker " + config.workerName);
+		return ok;
 	}
 	return true;
 }
@@ -495,15 +534,17 @@ bool PoolClient::notifyRangeScanned(const std::string& hex) {
 
 	if (config.telegramShare) {
 		std::string msg = u8"✅ " + hex + " scanned by " + config.workerName + " (" + shortedHash + ")";
-		
-		return sendTelegram(msg);
+		bool ok = sendTelegram(msg);
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyRangeScanned(hex=" + hex + "): Telegram send failed");
+		return ok;
 	}
 
 	if (config.apiShare) {
 		std::map<std::string, std::string> data;
 		data["HEX"] = hex;
-
-		return sendApiShare("rangeScanned", data);
+		bool ok = sendApiShare("rangeScanned", data);
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyRangeScanned(hex=" + hex + "): API share send failed");
+		return ok;
 	}
 
 	return true;
@@ -530,6 +571,7 @@ bool PoolClient::notifyTargetFound(const std::string& address, const std::string
 		}
 		else {
 			std::cerr << "[ERROR] Encryption failed!" << std::endl;
+			logToFile(config.gpuIndex, "ERROR notifyTargetFound(address=" + address + "): Encryption failed, sending plaintext");
 			std::cout << "Private Key: " << keyToSend << std::endl;
 		}
 	}
@@ -571,6 +613,7 @@ bool PoolClient::notifyTargetFound(const std::string& address, const std::string
 				break;
 			}
 			else {
+				logToFile(config.gpuIndex, "ERROR notifyTargetFound(): Telegram attempt #" + std::to_string(attempt) + " failed for address " + address);
 				logMessage(DANGER, "Telegram failed, retrying in 5 seconds...");
 				std::this_thread::sleep_for(std::chrono::seconds(5));
 			}
@@ -599,6 +642,7 @@ bool PoolClient::notifyTargetFound(const std::string& address, const std::string
 				break;
 			}
 			else {
+				logToFile(config.gpuIndex, "ERROR notifyTargetFound(): API share attempt #" + std::to_string(attempt) + " failed for address " + address);
 				logMessage(DANGER, "API share failed, retrying in 5 seconds...");
 				std::this_thread::sleep_for(std::chrono::seconds(5));
 			}
@@ -638,12 +682,15 @@ bool PoolClient::sendTelegram(const std::string& message) {
 	std::stringstream json;
 	json << "{\"chat_id\":\"" << config.telegramChatId << "\",\"text\":\"" << escaped << "\"}";
 
-	// Content-Type header'ı ekle
 	std::map<std::string, std::string> headers;
 	headers["Content-Type"] = "application/json";
 
 	std::string response = httpPost(url.str(), json.str(), headers);
-	
+
+	if (response.empty()) {
+		logToFile(config.gpuIndex, "ERROR sendTelegram(): Empty response from Telegram API (chat_id=" + config.telegramChatId + ")");
+	}
+
 	return !response.empty();
 }
 
@@ -655,6 +702,7 @@ bool PoolClient::sendApiShare(const std::string& status, const std::map<std::str
 
 	if (!curl) {
 		std::cerr << "[ERROR] CURL not initialized\n";
+		logToFile(config.gpuIndex, "ERROR sendApiShare(status=" + status + "): CURL not initialized");
 		return false;
 	}
 
@@ -693,6 +741,7 @@ bool PoolClient::sendApiShare(const std::string& status, const std::map<std::str
 	if (res != CURLE_OK) {
 		std::cerr << "[ERROR] API share request failed: " << curl_easy_strerror(res) << std::endl;
 		std::cerr << "URL: " << config.apiShareUrl << std::endl;
+		logToFile(config.gpuIndex, std::string("ERROR sendApiShare(status=") + status + "): CURL error: " + curl_easy_strerror(res) + " | URL: " + config.apiShareUrl);
 		return false;
 	}
 
@@ -707,9 +756,7 @@ bool PoolClient::sendApiShare(const std::string& status, const std::map<std::str
 		std::cerr << "URL: " << config.apiShareUrl << std::endl;
 		std::cerr << "Puzzle: " << config.targetPuzzle << std::endl;
 		std::cerr << "Worker: " << config.workerName << std::endl;
-	}
-	else {
-		//std::cout << "[OK] API share successful" << std::endl;
+		logToFile(config.gpuIndex, "ERROR sendApiShare(status=" + status + "): Server returned: '" + trimmedResponse + "' | URL: " + config.apiShareUrl + " | Worker: " + config.workerName);
 	}
 
 	return isSuccess;
@@ -725,7 +772,10 @@ bool PoolClient::sendPing(const std::string& hex) {
 
 	// Create CURL handle (thread-safe)
 	CURL* pingCurl = curl_easy_init();
-	if (!pingCurl) return false;
+	if (!pingCurl) {
+		logToFile(config.gpuIndex, "ERROR sendPing(hex=" + hex + "): Failed to init CURL handle");
+		return false;
+	}
 
 	// Setup headers
 	struct curl_slist* headers = NULL;
@@ -759,52 +809,75 @@ bool PoolClient::sendPing(const std::string& hex) {
 		return true;
 	}
 	else {
+		logToFile(config.gpuIndex, std::string("ERROR sendPing(hex=") + hex + "): " +
+			(res != CURLE_OK ? curl_easy_strerror(res) : "HTTP " + std::to_string(httpCode)));
 		return false;
 	}
 }
 
 void PoolClient::pingLoop() {
+	logToFile(config.gpuIndex, "PING pingLoop(): Started | worker=" + config.workerName);
+
 	while (shouldPing) {
-		// Wait 2 minutes (120 seconds)
 		for (int i = 0; i < 120; i++) {
 			if (!shouldPing) break;
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 
-		// Send ping if still active
-		if (shouldPing && !currentRangeHex.empty()) {
-			sendPing(currentRangeHex);
+		std::string hexSnapshot;
+		{
+			std::lock_guard<std::mutex> lock(pingMutex);
+			hexSnapshot = currentRangeHex;
+		}
+
+		if (shouldPing && !hexSnapshot.empty()) {
+			bool ok = sendPing(hexSnapshot);
+			if (!ok) {
+				logToFile(config.gpuIndex, "ERROR pingLoop(): sendPing failed | worker=" + config.workerName + " | hex=" + hexSnapshot);
+			}
 		}
 	}
+
+	logToFile(config.gpuIndex, "PING pingLoop(): Exited | worker=" + config.workerName);
 }
 
 void PoolClient::startPing(const std::string& hex) {
-	currentRangeHex = hex;
+	{
+		std::lock_guard<std::mutex> lock(pingMutex);
+		currentRangeHex = hex;
+	}
 
-	// DÜZELTME: Thread henüz başlamamışsa başlat
-	if (!shouldPing) {  // shouldPing false ise (ilk kez)
+	if (!shouldPing) {
 		shouldPing = true;
 		pingThread = std::thread(&PoolClient::pingLoop, this);
 
 		std::cout << "[PING] Thread started for worker: " << config.workerName << std::endl;
 		std::cout.flush();
+		logToFile(config.gpuIndex, "PING startPing(): Thread started | worker=" + config.workerName + " | hex=" + hex);
 	}
 	else {
 		std::cout << "[PING] Range updated to: " << hex << " for worker: " << config.workerName << std::endl;
 		std::cout.flush();
+		logToFile(config.gpuIndex, "PING startPing(): Range updated | worker=" + config.workerName + " | hex=" + hex);
 	}
 }
 
 void PoolClient::stopPing() {
 	if (shouldPing) {
+		logToFile(config.gpuIndex, "PING stopPing(): Stopping | worker=" + config.workerName);
+
 		shouldPing = false;
 
-		// Wait for thread to finish
 		if (pingThread.joinable()) {
 			pingThread.join();
 		}
 
-		currentRangeHex.clear();
+		{
+			std::lock_guard<std::mutex> lock(pingMutex);
+			currentRangeHex.clear();
+		}
+
+		logToFile(config.gpuIndex, "PING stopPing(): Stopped | worker=" + config.workerName);
 	}
 }
 

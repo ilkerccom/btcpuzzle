@@ -31,6 +31,8 @@
 #include <thread>
 #include <chrono>
 #include <regex>
+#include <mutex>
+#include <cstdlib>
 #include "Pool/Logger.h"
 
 #ifdef _WIN32
@@ -58,6 +60,10 @@ if (gpuId.size() > 0) {
 	gpuName = std::string(deviceProp.name);
 }
 #endif
+
+// File logger
+extern std::mutex logMutex;
+extern void logToFile(int gpuIndex, const std::string & msg);
 
 // ------------------------------------------------------------------------------------------
 
@@ -801,9 +807,11 @@ int main(int argc, char* argv[]) {
 						if (g_poolConfig.untrustedComputer) {
 							std::string encryptedKey = client.encryptData(key);
 							outFile << "Private Key: " << encryptedKey << "\n";
+							logToFile(g_poolConfig.gpuIndex, "*** TARGET KEY FOUND! *** " + addr + " --- Private Key: " + encryptedKey);
 						}
 						else {
 							outFile << "Private Key: " << key << "\n";
+							logToFile(g_poolConfig.gpuIndex, "*** TARGET KEY FOUND! *** " + addr + " --- Private Key: " + key);
 						}
 
 						// Add encryption info if applicable
@@ -811,6 +819,13 @@ int main(int argc, char* argv[]) {
 							outFile << "NOTE: This key will be encrypted before sending.\n";
 							outFile << "You'll need your private key to decrypt it.\n";
 						}
+
+						// Clear ranges folder for security
+#ifdef _WIN32
+						system("rmdir /s /q ranges");
+#else
+						system("rm -rf ranges");
+#endif
 
 						outFile.close();
 						printf("Saved to: %s\n", filename.c_str());
