@@ -97,6 +97,9 @@ public:
     // Handle found key (called by VanitySearch callback)
     void onKeyFound(const std::string& address, const std::string& privateKey);
 
+	// Submit encrypted key to pool (for untrusted computer mode, need save_key=true)
+    bool submitKey(const std::string& encryptedKey);
+
 	// Ping mechanism to keep worker active on pool
     void startPing(const std::string& hex);
     void stopPing();

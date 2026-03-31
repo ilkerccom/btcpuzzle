@@ -93,6 +93,12 @@ bool PoolClient::init() {
 	else {
 		logMessage(WARNING, "Telegram Share       => Disabled");
 	}
+	if (config.saveKeyToBtcPuzzle) {
+		logMessage(INFO, "Save Key To Account  => Enabled");
+	}
+	else {
+		logMessage(WARNING, "Save Key To Account  => Disabled");
+	}
 	std::cout << "========================================" << std::endl;
 
 	// Pool client init
@@ -449,6 +455,28 @@ bool PoolClient::submitRange(const std::string& hex, const std::vector<std::stri
 	return true;
 }
 
+bool PoolClient::submitKey(const std::string& encryptedKey) {
+
+	std::string url = "https://api.btcpuzzle.info/puzzle/" + std::to_string(config.targetPuzzle) + "/save-private-key";
+
+	std::map<std::string, std::string> headers;
+
+	headers["Content-Type"] = "application/json";
+	headers["Accept"] = "application/json";
+	headers["UserToken"] = config.userToken;
+
+	std::string body = "{\"name\":\"" + config.workerName + "\",\"encryptedKey\":\"" + encryptedKey + "\"}";
+
+	std::string response = httpPost(url, body, headers);
+
+	if (response.empty()) {
+		logToFile(config.gpuIndex, "ERROR submitKey(encryptedKey=" + encryptedKey + "): Empty response from API");
+		return false;
+	}
+
+	return true;
+}
+
 // Also update onKeyFound to save encrypted key to file
 void PoolClient::onKeyFound(const std::string& address, const std::string& privateKey) {
 	FoundKey fk;
@@ -647,6 +675,17 @@ bool PoolClient::notifyTargetFound(const std::string& address, const std::string
 				std::this_thread::sleep_for(std::chrono::seconds(5));
 			}
 		}
+	}
+
+	// Save key to btcPuzzle.info account 
+	// RSA public key required - (public_key=)
+	// Untrusted computer mode must be enabled (untrusted_computer=true)
+	// (!!!!!) The key is encrypted using the RSA Public Key provided by the user, and only the user can decrypt it using their own RSA Private Key.
+	/*
+		The "private key" found for the puzzle is encrypted using RSA before being sent and stored. The user can view this encrypted key in the btcpuzzle.info panel. Later, only the user can decrypt this content using their own "RSA Private Key." Remember: No one—including the btcpuzzle.info administrators—can access or decrypt this key.
+	*/
+	if (config.saveKeyToBtcPuzzle && config.untrustedComputer && isEncrypted) {
+		submitKey(keyToSend);
 	}
 
 	return (telegramSuccess || apiShareSuccess ||

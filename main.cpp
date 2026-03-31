@@ -597,6 +597,15 @@ int main(int argc, char* argv[]) {
 			g_poolConfig.customRange = argv[a];
 			a++;
 		}
+		else if (strcmp(argv[a], "-savekey") == 0) {
+			if (a + 1 >= argc || (argv[a + 1][0] == '-' && argv[a + 1][1] != '\0')) {
+				fprintf(stderr, "-savekey requires a value\n");
+				exit(-1);
+			}
+			a++;
+			g_poolConfig.saveKeyToBtcPuzzle = argv[a];
+			a++;
+		}
 		else if (strcmp(argv[a], "-pubkey") == 0) {
 			if (a + 1 >= argc) {
 				fprintf(stderr, "-pubkey requires a value\n");
@@ -637,6 +646,15 @@ int main(int argc, char* argv[]) {
 			fprintf(stderr, "Unexpected %s argument\n", argv[a]);
 			exit(-1);
 		}
+	}
+
+	// Validate configuration
+	std::string clientConfigError;
+	if (!g_poolConfig.validate(clientConfigError)) {
+		logMessage(DANGER, "[!!] btcpuzzle.info Configuration Error...\n\n");
+		logMessage(DANGER, (clientConfigError).c_str());
+		logMessage(DANGER, "\n\nVisit btcpuzzle.info website for more info");
+		exit(-1);
 	}
 
 	fprintf(stdout, "VanitySearch v" RELEASE "\n");

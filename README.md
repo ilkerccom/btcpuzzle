@@ -74,6 +74,8 @@ Example: ```./btcpuzzle -puzzle 71 ...```
 
 -telegramchatid => Your Telegram chat ID. Example: -123456789
 
+-savekey => Save the encrypted key to btcpuzzle.info account. (RSA public key required)
+
 ```
 
 # Default Settings
@@ -110,10 +112,24 @@ telegram_chat_id=
 api_share=false
 api_share_url=
 
+# Save key to btcpuzzle.info account
+# public_key => required
+save_key=false
+
 # Other Settings
 custom_range=none
 
 ```
+
+# About <save_key>
+
+Apart from Telegram and API sharing, you can optionally set this option to "true". When this setting is enabled, you must provide a valid RSA Public Key in the "public_key" field; otherwise, the client will not run.
+
+When this feature is enabled, the private key found for the puzzle will be encrypted and stored in your btcpuzzle.info account. You can view all stored keys on the "Found Keys" page.
+
+Only data encrypted with your own RSA Public Key will be stored in this section. The saved private keys are stored in an RSA-encrypted format.
+
+No one, including the btcpuzzle.info administrators, can decrypt this data. Only your RSA Private Key can be used to decrypt it.
 
 # Untrusted Computer and RSA Encryption
 

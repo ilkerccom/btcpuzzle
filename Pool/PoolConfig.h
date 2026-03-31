@@ -31,6 +31,12 @@ public:
     bool apiShare = false;
     std::string apiShareUrl;
 
+	// Save key to btcPuzzle.info account 
+    // (RSA public key required - publicKeyString)
+	// Untrusted computer mode must be enabled (untrustedComputer=true)
+    // (!!!!!) The key is encrypted using the RSA Public Key provided by the user, and only the user can decrypt it using their own RSA Private Key.
+	bool saveKeyToBtcPuzzle = false;
+
     // Other Settings
     std::string customRange = "none";
     std::string securityHash = "";

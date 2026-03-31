@@ -127,6 +127,7 @@ PoolConfig PoolConfig::loadFromFile(const std::string& filepath) {
         else if (key == "api_share") config.apiShare = parseBool(value);
         else if (key == "api_share_url") config.apiShareUrl = value;
         else if (key == "custom_range") config.customRange = value;
+        else if (key == "save_key") config.saveKeyToBtcPuzzle = parseBool(value);
     }
 
     file.close();
@@ -175,6 +176,12 @@ bool PoolConfig::validate(std::string& error) const {
     // Check API share config if enabled
     if (apiShare && apiShareUrl.empty()) {
         error = "API share enabled but api_share_url is missing";
+        return false;
+    }
+
+	// Check save the key to btcpuzzle.info account config
+    if (saveKeyToBtcPuzzle && !untrustedComputer) {
+        error = "The key must be encrypted before being saved to the btcpuzzle.info account. Therefore, you need to provide a valid RSA Public Key (public_key).";
         return false;
     }
 
