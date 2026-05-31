@@ -31,7 +31,7 @@ do
   [ -n "$TELEGRAM_TOKEN" ] && CMD+=("-telegramtoken" "$TELEGRAM_TOKEN")
   [ -n "$TELEGRAM_CHATID" ] && CMD+=("-telegramchatid" "$TELEGRAM_CHATID")
   [ -n "$CUSTOM_RANGE" ] && CMD+=("-customrange" "$CUSTOM_RANGE")
-  [ -n "$SAVE_KEY" ] && CMD+=("-savekey" "$SAVE_KEY")
+  [ -n "$SAVE_KEY" ] && [ "$SAVE_KEY" != "false" ] && CMD+=("-savekey" "$SAVE_KEY")
 
   CURRENT_WORKER="${BASE_WORKER}_${i}"
   CMD+=("-worker" "$CURRENT_WORKER")

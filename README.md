@@ -46,9 +46,11 @@ Pool client mode created by [ilkerccom](https://github.com/ilkerccom) for btcpuz
 
 # Docker Build
 
+```openssl rand -hex 32```
+
 - Build the image:
     ```
-    $ docker build -t btcpuzzle .
+    $ docker build --build-arg BUILD_HASH="a3f1c9d7e2b8..." -t btcpuzzle .
     ```
 - Run the container:
     ```
@@ -121,15 +123,28 @@ custom_range=none
 
 ```
 
-# About <save_key>
+# About "save_key"
 
-Apart from Telegram and API sharing, you can optionally set this option to "true". When this setting is enabled, you must provide a valid RSA Public Key in the "public_key" field; otherwise, the client will not run.
+This feature is designed primarily for beginner users who want a simple way to avoid losing a found key.
 
-When this feature is enabled, the private key found for the puzzle will be encrypted and stored in your btcpuzzle.info account. You can view all stored keys on the "Found Keys" page.
+When enabled, you must provide a valid RSA Public Key in the public_key field. The client will encrypt any found private key using your public key before sending it to btcpuzzle.info.
 
-Only data encrypted with your own RSA Public Key will be stored in this section. The saved private keys are stored in an RSA-encrypted format.
+The encrypted key will then be stored in your btcpuzzle.info account and can be viewed later on the "Found Keys" page.
 
-No one, including the btcpuzzle.info administrators, can decrypt this data. Only your RSA Private Key can be used to decrypt it.
+Only your RSA Private Key can decrypt this data. btcpuzzle.info administrators do not have access to your private key and cannot decrypt the stored value.
+
+---
+
+**[IMPORTANT-1]: While the stored key itself is encrypted and cannot be decrypted by btcpuzzle.info, pool operations require tracking range assignments, scan progress, and worker activity. Users who require the highest possible level of privacy should use api_share or Telegram sharing instead of save_key, as these methods allow encrypted results to be delivered directly to the user without being stored on btcpuzzle.info servers.**
+
+For most users, save_key provides a convenient and secure backup mechanism. Advanced users who prefer maximum privacy should use their own notification or delivery method.
+
+---
+
+**[IMPORTANT-2]**: The pool operator cannot decrypt RSA-encrypted keys. However, a malicious operator may be able to review the ranges previously scanned by a user and estimate the area in which the key was found, then rescan that area for their own benefit.
+
+For this reason, you should carefully consider whether to use the `save_key` feature. While I have no intention of doing this, I believe it is important to be transparent about potential risks and how the system works. Users who require the highest level of privacy are encouraged to use the `api_share` feature instead.
+
 
 # Untrusted Computer and RSA Encryption
 
@@ -140,6 +155,22 @@ To decrypt the value, make sure you have the corresponding private key for the p
 You can generate these keys anywhere you prefer. Be sure to securely store both your public and private keys. The client will use the public key, and the private key must never be shared with anyone.
 
 To ensure everything is working correctly, test these settings using puzzle 38 and verify that you can successfully decrypt the value.
+
+# local.props example
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <BuildHash>b3587c5764588b61f1980e03adef95bc0509bd119ae099c19d0f0e73471e1b8a</BuildHash>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>BUILD_HASH="$(BuildHash)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>
+```
 
 # RSA Example Keys
 

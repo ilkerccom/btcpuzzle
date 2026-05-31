@@ -2,7 +2,7 @@
 
 #ifndef POOL_CONFIG_H
 #define POOL_CONFIG_H
-#define POOL_VERSION "v1.0.0"
+#define POOL_VERSION "v1.0.1"
 
 #include <string>
 

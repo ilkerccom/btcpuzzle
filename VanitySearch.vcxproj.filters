@@ -102,6 +102,7 @@
     <ClCompile Include="Pool\PoolConfig.cpp">
       <Filter>Pool</Filter>
     </ClCompile>
+    <ClCompile Include="local.props" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="GPU\GPUEngine.cu">

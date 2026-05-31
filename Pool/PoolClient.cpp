@@ -67,7 +67,6 @@ bool PoolClient::init() {
 	std::cout << "Client               => Btcpuzzle.info Client " << POOL_VERSION << std::endl;
 	std::cout << "Worker               => " << config.workerName << std::endl;
 	std::cout << "Puzzle               => Puzzle " << config.targetPuzzle << std::endl;
-	std::cout << "App Code Hash        => " << config.appCodeHash << std::endl;
 	std::cout << "Security Hash        => " << config.securityHash << std::endl;
 	std::cout << "GPU                  => " << config.gpuName << std::endl;
 	std::cout << "Custom Range         => " << config.customRange << std::endl;
@@ -439,13 +438,20 @@ bool PoolClient::submitRange(const std::string& hex, const std::vector<std::stri
 	long httpCode = 0;
 	std::string response = httpPut(url, "", headers, httpCode);
 
+	// Masked hex on untrusted computers for privacy in logs
+	std::string maskedHex = hex;
+	if (maskedHex.length() >= 2 && config.untrustedComputer) {
+		maskedHex[1] = '*';
+		maskedHex[maskedHex.length() - 1] = '*';
+	}
+
 	if (response.empty()) {
-		logToFile(config.gpuIndex, "ERROR submitRange(hex=" + hex + "): Empty response from API");
+		logToFile(config.gpuIndex, "ERROR submitRange(hex=" + maskedHex + "): Empty response from API");
 		return false;
 	}
 
 	if (httpCode != 200) {
-		logToFile(config.gpuIndex, "ERROR submitRange(hex=" + hex + "): HTTP " + std::to_string(httpCode) + " | Response: " + response);
+		logToFile(config.gpuIndex, "ERROR submitRange(hex=" + maskedHex + "): HTTP " + std::to_string(httpCode) + " | Response: " + response);
 	}
 
 	if (httpCode == 200) {
@@ -560,10 +566,16 @@ bool PoolClient::notifyRangeScanned(const std::string& hex) {
 	std::string hash = config.securityHash;
 	std::string shortedHash = hash.substr(0, 4) + "..." + hash.substr(hash.size() - 4);
 
+	std::string maskedHex = hex;
+	if (maskedHex.length() >= 2 && config.untrustedComputer) {
+		maskedHex[1] = '*';
+		maskedHex[maskedHex.length() - 1] = '*';
+	}
+
 	if (config.telegramShare) {
 		std::string msg = u8"✅ " + hex + " scanned by " + config.workerName + " (" + shortedHash + ")";
 		bool ok = sendTelegram(msg);
-		if (!ok) logToFile(config.gpuIndex, "ERROR notifyRangeScanned(hex=" + hex + "): Telegram send failed");
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyRangeScanned(hex=" + maskedHex + "): Telegram send failed");
 		return ok;
 	}
 
@@ -571,7 +583,7 @@ bool PoolClient::notifyRangeScanned(const std::string& hex) {
 		std::map<std::string, std::string> data;
 		data["HEX"] = hex;
 		bool ok = sendApiShare("rangeScanned", data);
-		if (!ok) logToFile(config.gpuIndex, "ERROR notifyRangeScanned(hex=" + hex + "): API share send failed");
+		if (!ok) logToFile(config.gpuIndex, "ERROR notifyRangeScanned(hex=" + maskedHex + "): API share send failed");
 		return ok;
 	}
 
@@ -809,10 +821,17 @@ bool PoolClient::sendPing(const std::string& hex) {
 	urlStream << config.apiUrl << "/puzzle/"
 		<< config.targetPuzzle << "/range/ping";
 
+	// Mask hex for logging if untrusted
+	std::string maskedHex = hex;
+	if (maskedHex.length() >= 2 && config.untrustedComputer) {
+		maskedHex[1] = '*';
+		maskedHex[maskedHex.length() - 1] = '*';
+	}
+
 	// Create CURL handle (thread-safe)
 	CURL* pingCurl = curl_easy_init();
 	if (!pingCurl) {
-		logToFile(config.gpuIndex, "ERROR sendPing(hex=" + hex + "): Failed to init CURL handle");
+		logToFile(config.gpuIndex, "ERROR sendPing(hex=" + maskedHex + "): Failed to init CURL handle");
 		return false;
 	}
 
@@ -848,7 +867,7 @@ bool PoolClient::sendPing(const std::string& hex) {
 		return true;
 	}
 	else {
-		logToFile(config.gpuIndex, std::string("ERROR sendPing(hex=") + hex + "): " +
+		logToFile(config.gpuIndex, std::string("ERROR sendPing(hex=") + maskedHex + "): " +
 			(res != CURLE_OK ? curl_easy_strerror(res) : "HTTP " + std::to_string(httpCode)));
 		return false;
 	}
@@ -886,18 +905,24 @@ void PoolClient::startPing(const std::string& hex) {
 		currentRangeHex = hex;
 	}
 
+	std::string maskedHex = hex;
+	if (maskedHex.length() >= 2 && config.untrustedComputer) {
+		maskedHex[1] = '*';
+		maskedHex[maskedHex.length() - 1] = '*';
+	}
+
 	if (!shouldPing) {
 		shouldPing = true;
 		pingThread = std::thread(&PoolClient::pingLoop, this);
 
 		std::cout << "[PING] Thread started for worker: " << config.workerName << std::endl;
 		std::cout.flush();
-		logToFile(config.gpuIndex, "PING startPing(): Thread started | worker=" + config.workerName + " | hex=" + hex);
+		logToFile(config.gpuIndex, "PING startPing(): Thread started | worker=" + config.workerName + " | hex=" + maskedHex);
 	}
 	else {
-		std::cout << "[PING] Range updated to: " << hex << " for worker: " << config.workerName << std::endl;
+		std::cout << "[PING] Range updated to: " << maskedHex << " for worker: " << config.workerName << std::endl;
 		std::cout.flush();
-		logToFile(config.gpuIndex, "PING startPing(): Range updated | worker=" + config.workerName + " | hex=" + hex);
+		logToFile(config.gpuIndex, "PING startPing(): Range updated | worker=" + config.workerName + " | hex=" + maskedHex);
 	}
 }
 

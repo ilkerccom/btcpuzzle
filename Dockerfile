@@ -3,12 +3,14 @@
 # -------- BUILD STAGE --------
 FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 AS build
 
+ARG BUILD_HASH
+
 WORKDIR /build
 RUN apt-get update && apt-get install -y \
     build-essential g++-9 libcurl4-openssl-dev libssl-dev
 
 COPY . .
-RUN make gpu=1 all
+RUN make gpu=1 all BUILD_HASH="${BUILD_HASH}"
 
 
 # -------- RUNTIME STAGE --------

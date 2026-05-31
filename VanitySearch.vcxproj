@@ -153,4 +153,5 @@
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.6.targets" />
   </ImportGroup>
+  <Import Project="local.props" Condition="Exists('local.props')" />
 </Project>

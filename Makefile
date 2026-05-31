@@ -67,6 +67,10 @@ endif
 LFLAGS     = -lpthread -lcurl -lssl -lcrypto
 endif
 
+ifdef BUILD_HASH
+CXXFLAGS  += -DBUILD_HASH=\"$(BUILD_HASH)\"
+endif
+
 #--------------------------------------------------------------------
 
 ifdef gpu

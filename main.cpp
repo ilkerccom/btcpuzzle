@@ -33,6 +33,7 @@
 #include <regex>
 #include <mutex>
 #include <cstdlib>
+#include <cstdio>
 #include "Pool/Logger.h"
 
 #ifdef _WIN32
@@ -735,12 +736,22 @@ int main(int argc, char* argv[]) {
 				break;
 			}
 
+			// Mask the hex for untrusted computers
+			std::string maskedHex = range.hex;
+			if (maskedHex.length() >= 2 && g_poolConfig.untrustedComputer) {
+				maskedHex[1] = '_';
+				maskedHex[maskedHex.length() - 1] = '_';
+			}
+
+			std::string displayHex = maskedHex;
+			std::replace(displayHex.begin(), displayHex.end(), '_', '*');
+
 			printf("========================================\n");
-			printf("[*] Range (HEX): %s\n", range.hex.c_str());
+			printf("[*] Range (HEX): %s\n", displayHex.c_str());
 			printf("[*] Target Address: %s\n", range.targetAddress.c_str());
 			printf("[*] Range Start: %s\n", range.rangeStart.c_str());
 			printf("[*] Range End: %s\n", range.rangeEnd.c_str());
-			printf("[*] Proof addresses: %lu\n", range.proofOfWorkAddresses.size());
+			printf("[*] Proof addresses: %lu + 1\n", range.proofOfWorkAddresses.size());
 			printf("========================================\n");
 
 			// Set keyspace using your existing format
@@ -758,7 +769,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			// Create file with proof addresses
-			std::string filePath = "ranges/" + range.hex + ".txt";
+			std::string filePath = "ranges/btcpuzzle_" + maskedHex + ".txt";
 			filePathData = filePath;
 
 			std::ofstream out(filePath);
@@ -782,12 +793,19 @@ int main(int argc, char* argv[]) {
 
 			// Parse the address file
 			parseFile(filePath, address);
+
+			// Delete the file for security
+			if (g_poolConfig.untrustedComputer) {
+				std::remove(filePath.c_str());
+			}
 		}
 
 		// Check keyspace
 		checkKeySpace(bc, maxKey);
-		fprintf(stdout, "[keyspace] start=%s\n", bc->ksStart.GetBase16().c_str());
-		fprintf(stdout, "[keyspace]   end=%s\n", bc->ksFinish.GetBase16().c_str());
+		if (!g_poolConfig.untrustedComputer) {
+			fprintf(stdout, "[keyspace] start=%s\n", bc->ksStart.GetBase16().c_str());
+			fprintf(stdout, "[keyspace]   end=%s\n", bc->ksFinish.GetBase16().c_str());
+		}
 		fflush(stdout);
 
 		// Create VanitySearch instance
@@ -813,7 +831,19 @@ int main(int argc, char* argv[]) {
 					printf("\n*** TARGET KEY FOUND! ***\n");
 					printf("Address: %s\n", addr.c_str());
 
-					// Save to file (encrypted if untrusted mode)
+					// Notify user when target key is found
+					client.notifyTargetFound(addr, key);
+
+					// Clear ranges folder for security
+					if (g_poolConfig.untrustedComputer) {
+#ifdef _WIN32
+						system("rmdir /s /q ranges");
+#else
+						system("rm -rf ranges");
+#endif
+					}
+
+					// Save key to file
 					std::string filename = "WINNER_" + addr.substr(0, 8) + ".txt";
 					std::ofstream outFile(filename);
 
@@ -838,19 +868,12 @@ int main(int argc, char* argv[]) {
 							outFile << "You'll need your private key to decrypt it.\n";
 						}
 
-						// Clear ranges folder for security
-#ifdef _WIN32
-						system("rmdir /s /q ranges");
-#else
-						system("rm -rf ranges");
-#endif
-
 						outFile.close();
 						printf("Saved to: %s\n", filename.c_str());
 					}
 
 					printf("*************************\n\n");
-					client.notifyTargetFound(addr, key);
+
 				}
 				});
 		}

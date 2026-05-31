@@ -32,36 +32,11 @@ bool PoolConfig::parseBool(const std::string& value) {
 }
 
 std::string PoolConfig::getSelfHash() {
-    std::ifstream file;
-
-#ifdef _WIN32
-    char path[MAX_PATH];
-    GetModuleFileNameA(NULL, path, MAX_PATH);
-    file.open(path, std::ios::binary);
+#ifdef BUILD_HASH
+    return BUILD_HASH;
 #else
-    file.open("/proc/self/exe", std::ios::binary);
+    return "";
 #endif
-
-    if (!file) return "";
-
-    SHA256_CTX ctx;
-    SHA256_Init(&ctx);
-
-    std::vector<char> buffer(8192);
-    while (file.good()) {
-        file.read(buffer.data(), buffer.size());
-        SHA256_Update(&ctx, buffer.data(), file.gcount());
-    }
-
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(hash, &ctx);
-
-    char out[65];
-    for (int i = 0; i < 32; i++)
-        sprintf(out + i * 2, "%02x", hash[i]);
-    out[64] = 0;
-
-    return std::string(out);
 }
 
 PoolConfig PoolConfig::loadFromFile(const std::string& filepath) {
