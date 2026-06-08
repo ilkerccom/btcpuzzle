@@ -5,10 +5,10 @@
 
 SRC = Base58.cpp IntGroup.cpp main.cpp Random.cpp \
       Timer.cpp Int.cpp IntMod.cpp Point.cpp SECP256K1.cpp \
-      Vanity.cpp GPU/GPUGenerate.cpp hash/ripemd160.cpp \
+      Vanity.cpp RangeMath.cpp GPU/GPUGenerate.cpp hash/ripemd160.cpp \
       hash/sha256.cpp hash/sha512.cpp hash/ripemd160_sse.cpp \
       hash/sha256_sse.cpp Bech32.cpp Wildcard.cpp \
-      Pool/PoolConfig.cpp Pool/PoolClient.cpp Pool/Logger.cpp
+      Pool/PoolConfig.cpp Pool/PoolClient.cpp Pool/Logger.cpp Pool/Checkpoint.cpp
 
 OBJDIR = obj
 
@@ -29,20 +29,20 @@ ifdef gpu
 
 OBJET = $(addprefix $(OBJDIR)/, \
         Base58.o IntGroup.o main.o Random.o Timer.o Int.o \
-        IntMod.o Point.o SECP256K1.o Vanity.o GPU/GPUGenerate.o \
+        IntMod.o Point.o SECP256K1.o Vanity.o RangeMath.o GPU/GPUGenerate.o \
         hash/ripemd160.o hash/sha256.o hash/sha512.o \
         hash/ripemd160_sse.o hash/sha256_sse.o \
         GPU/GPUEngine.o Bech32.o Wildcard.o \
-        Pool/PoolConfig.o Pool/PoolClient.o Pool/Logger.o)
+        Pool/PoolConfig.o Pool/PoolClient.o Pool/Logger.o Pool/Checkpoint.o)
 
 else
 
 OBJET = $(addprefix $(OBJDIR)/, \
         Base58.o IntGroup.o main.o Random.o Timer.o Int.o \
-        IntMod.o Point.o SECP256K1.o Vanity.o GPU/GPUGenerate.o \
+        IntMod.o Point.o SECP256K1.o Vanity.o RangeMath.o GPU/GPUGenerate.o \
         hash/ripemd160.o hash/sha256.o hash/sha512.o \
         hash/ripemd160_sse.o hash/sha256_sse.o Bech32.o Wildcard.o \
-		Pool/PoolConfig.o Pool/PoolClient.o Pool/Logger.o)
+		Pool/PoolConfig.o Pool/PoolClient.o Pool/Logger.o Pool/Checkpoint.o)
 
 endif
 

@@ -103,6 +103,7 @@ PoolConfig PoolConfig::loadFromFile(const std::string& filepath) {
         else if (key == "api_share_url") config.apiShareUrl = value;
         else if (key == "custom_range") config.customRange = value;
         else if (key == "save_key") config.saveKeyToBtcPuzzle = parseBool(value);
+        else if (key == "save_progress") config.saveProgress = parseBool(value);
     }
 
     file.close();

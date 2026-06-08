@@ -16,6 +16,7 @@
 */
 
 #include "Vanity.h"
+#include "RangeMath.h"
 #include "Base58.h"
 #include "Bech32.h"
 #include "hash/sha256.h"
@@ -163,7 +164,11 @@ VanitySearch::VanitySearch(Secp256K1* secp, vector<std::string>& inputAddresses,
 	beta2.SetBase16("851695d49a83f8ef919bb86153cbcb16630fb68aed0a766a3ec693d68e6afa40");
 	lambda2.SetBase16("ac9c52b33fa3cf1f5ad9e3fd77ed9ba4a880b9fc8ec739c2e0cfc810b51283ce");
 
-	startKey.Set(&bc->ksNext);	
+	startKey.Set(&bc->ksNext);
+	resumeOffset.SetInt32(0);
+	appliedResumeOffset.SetInt32(0);
+	resumeExpectedThreads = 0;
+	savedNumThreads = 0;
 
 	char* ctimeBuff;
 	time_t now = time(NULL);
@@ -877,19 +882,17 @@ void VanitySearch::getGPUStartingKeysMT(Int& tRangeStart, Int& tRangeEnd, int gr
 
 	Int tNumThreadsGPU;
 	tNumThreadsGPU.SetInt32(numThreadsGPU);
-	tRangeDiffPerGPUThread.Set(&tRangeEnd);
-	if (tRangeDiffPerGPUThread.IsOdd())
+	// Global span (end[+1 if odd] - start), used below for CPU-thread division.
+	Int tRangeDiffGlobal(&tRangeEnd);
+	if (tRangeDiffGlobal.IsOdd())
 	{
-		tRangeDiffPerGPUThread.AddOne();
+		tRangeDiffGlobal.AddOne();
 	}
-	tRangeDiffPerGPUThread.Sub(&tRangeStart);
+	tRangeDiffGlobal.Sub(&tRangeStart);
 
-	Int tRangeDiffGlobal(&tRangeDiffPerGPUThread);
-
-	// this only needed if total GPU threads not power of 2
-	//tRangeDiffPerThread.Add(&numThreads);
-
-	tRangeDiffPerGPUThread.Div(&tNumThreadsGPU);
+	// Per-GPU-thread width (kept in sync with RangeMath, used by tests/resume).
+	Int _ptd = RangeMath::perThreadDiff(tRangeStart, tRangeEnd, numThreadsGPU);
+	tRangeDiffPerGPUThread.Set(&_ptd);
 
 	firstGPUThreadLastPrivateKey.Set(&tRangeStart);
 	firstGPUThreadLastPrivateKey.Add(&tRangeDiffPerGPUThread);	
@@ -936,6 +939,7 @@ void VanitySearch::FindKeyGPU(TH_PARAM* ph) {
 	int thId = ph->threadId;
 	GPUEngine g(ph->gridSizeX, ph->gridSizeY, ph->gpuId, maxFound);
 	int numThreadsGPU = g.GetNumThreadsGPU();
+	savedNumThreads = numThreadsGPU;
 	Point* publicKeys = new Point[numThreadsGPU];
 	Int* privateKeys = new Int[numThreadsGPU];
 	vector<ITEM> found;
@@ -951,7 +955,32 @@ void VanitySearch::FindKeyGPU(TH_PARAM* ph) {
 
 	//getGPUStartingKeys(bc->ksStart, bc->ksFinish, g.GetGroupSize(), numThreadsGPU, privateKeys, publicKeys);
 	getGPUStartingKeysMT(bc->ksStart, bc->ksFinish, g.GetGroupSize(), numThreadsGPU, privateKeys, publicKeys);
-	
+
+	// Resume: shift each thread's start key by the saved per-thread offset.
+	if (!resumeOffset.IsZero()) {
+		Int effOffset(&resumeOffset);
+		if (resumeExpectedThreads != numThreadsGPU) {
+			fprintf(stdout, "[RESUME] GPU thread count changed (%d -> %d): full range re-scan\n",
+				resumeExpectedThreads, numThreadsGPU);
+			fflush(stdout);
+			effOffset.SetInt32(0);
+		}
+		if (!effOffset.IsZero()) {
+			int gs = g.GetGroupSize();
+			for (int i = 0; i < numThreadsGPU; i++) {
+				privateKeys[i].Add(&effOffset);
+				Int pk(&privateKeys[i]);
+				pk.Add((uint64_t)(gs / 2));
+				publicKeys[i] = secp->ComputePublicKey(&pk);
+			}
+			fprintf(stdout, "[RESUME] resumed from per-thread offset 0x%s\n", effOffset.GetBase16().c_str());
+			fflush(stdout);
+		}
+		// Record the offset actually applied (0 on full re-scan fallback) so the
+		// monitor thread can report an ABSOLUTE checkpoint offset during resume.
+		appliedResumeOffset.Set(&effOffset);
+	}
+
 	// copy to gpu
 	ok = g.SetKeys(publicKeys);
 
@@ -1027,21 +1056,6 @@ uint64_t VanitySearch::getGPUCount() {
 	return count;
 }
 
-void VanitySearch::saveProgress(TH_PARAM* p, Int& lastSaveKey, BITCRACK_PARAM* bc) {
-
-	Int lowerKey;
-	lowerKey.Set(&p[0].THnextKey);
-
-	int total = numGPUs;
-	for (int i = 0; i < total; i++) {
-		if (p[i].THnextKey.IsLower(&lowerKey))
-			lowerKey.Set(&p[i].THnextKey);
-	}
-
-	if (lowerKey.IsLowerOrEqual(&lastSaveKey)) return;
-	lastSaveKey.Set(&lowerKey);
-}
-
 void VanitySearch::Search(std::vector<int> gpuId, std::vector<int> gridSize) {
 
 	double t0;
@@ -1082,8 +1096,6 @@ void VanitySearch::Search(std::vector<int> gpuId, std::vector<int> gridSize) {
 	uint64_t gpuCount = 0;	
 
 	double timeout60sec = 0;
-	Int lastSaveKey; 
-	lastSaveKey.SetInt32(0);
 
 	// Key rate smoothing filter
 #define FILTER_SIZE 20
@@ -1135,17 +1147,16 @@ void VanitySearch::Search(std::vector<int> gpuId, std::vector<int> gridSize) {
 		}
 
 		timeout60sec += (t1 - t0);
-		if (timeout60sec > 2.0) {	
+		if (timeout60sec > 5.0) {
 
-			// Save LowerPrivKey as saveProgress
-			/*saveProgress(params, lastSaveKey, bc);
-
-			// Reached end of keyspace
-			if (lastSaveKey.IsGreaterOrEqual(&bc->ksFinish)) {
-				endOfSearch = true;
-				fprintf(stdout, "[EXIT] Range search completed \n");	
-				fflush(stdout);
-			}*/
+			// Persist scan progress for crash-safe resume.
+			// Single-GPU only: with >1 GPU, getGPUCount() sums all devices while
+			// savedNumThreads is one device's thread count, so the offset would be wrong.
+			if (progressCallback && savedNumThreads > 0 && numGPUs == 1) {
+				Int off = RangeMath::offsetFromCount(getGPUCount(), savedNumThreads);
+				off.Add(&appliedResumeOffset);  // absolute offset (resume base + this run's advance)
+				progressCallback(off, savedNumThreads);
+			}
 
 			timeout60sec = 0.0;
 		}

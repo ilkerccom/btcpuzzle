@@ -32,6 +32,7 @@ do
   [ -n "$TELEGRAM_CHATID" ] && CMD+=("-telegramchatid" "$TELEGRAM_CHATID")
   [ -n "$CUSTOM_RANGE" ] && CMD+=("-customrange" "$CUSTOM_RANGE")
   [ -n "$SAVE_KEY" ] && [ "$SAVE_KEY" != "false" ] && CMD+=("-savekey" "$SAVE_KEY")
+  [ -n "$SAVE_PROGRESS" ] && CMD+=("-saveprogress" "$SAVE_PROGRESS")
 
   CURRENT_WORKER="${BASE_WORKER}_${i}"
   CMD+=("-worker" "$CURRENT_WORKER")
