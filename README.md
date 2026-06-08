@@ -78,6 +78,8 @@ Example: ```./btcpuzzle -puzzle 71 ...```
 
 -savekey => Save the encrypted key to btcpuzzle.info account. (RSA public key required)
 
+-saveprogress => Save/resume scan progress (true|false, default true). On restart the client finishes the interrupted range and submits it before requesting a new one.
+
 ```
 
 # Default Settings
@@ -120,6 +122,9 @@ save_key=false
 
 # Other Settings
 custom_range=none
+
+# Save/resume scan progress (resume an interrupted range on restart)
+save_progress=true
 
 ```
 

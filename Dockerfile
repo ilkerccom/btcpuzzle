@@ -31,6 +31,7 @@ ENV TELEGRAM_CHATID=""
 ENV CUSTOM_RANGE=""
 ENV CLOUDSEARCH_MODE="false"
 ENV SAVE_KEY="false"
+ENV SAVE_PROGRESS="true"
 
 COPY --from=build /build/vanitysearch /app/btcpuzzle
 COPY btcpuzzle.sh /app/btcpuzzle.sh

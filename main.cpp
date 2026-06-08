@@ -26,6 +26,7 @@
 #include "hash/sha256.h"
 #include "Pool/PoolConfig.h"
 #include "Pool/PoolClient.h"
+#include "Pool/Checkpoint.h"
 #include <iostream>
 #include <filesystem>
 #include <thread>
@@ -607,6 +608,15 @@ int main(int argc, char* argv[]) {
 			g_poolConfig.saveKeyToBtcPuzzle = argv[a];
 			a++;
 		}
+		else if (strcmp(argv[a], "-saveprogress") == 0) {
+			if (a + 1 >= argc || (argv[a + 1][0] == '-' && argv[a + 1][1] != '\0')) {
+				fprintf(stderr, "-saveprogress requires a value\n");
+				exit(-1);
+			}
+			a++;
+			g_poolConfig.saveProgress = (strcmp(argv[a], "true") == 0 || strcmp(argv[a], "1") == 0);
+			a++;
+		}
 		else if (strcmp(argv[a], "-pubkey") == 0) {
 			if (a + 1 >= argc) {
 				fprintf(stderr, "-pubkey requires a value\n");
@@ -690,6 +700,164 @@ int main(int argc, char* argv[]) {
 		std::string gpuName = match[1].str();
 		g_poolConfig.gpuName = gpuName;
 	}
+
+	// Checkpoint path (one per GPU instance) + ensure progress dir exists.
+	std::string cpPath = "progress/checkpoint_gpu" + std::to_string(g_poolConfig.gpuIndex) + ".txt";
+	{
+		struct stat stp = { 0 };
+		if (stat("progress", &stp) == -1) {
+#ifdef _WIN32
+			_mkdir("progress");
+#else
+			mkdir("progress", 0755);
+#endif
+		}
+	}
+
+	// ============ RESUME: finish an interrupted range, then submit ============
+	if (g_poolMode && g_poolConfig.saveProgress) {
+		Checkpoint cp;
+		if (CheckpointIO::load(cpPath, cp)) {
+			bool stale = (cp.puzzle != g_poolConfig.targetPuzzle) || cp.hex.empty()
+				|| cp.targetAddress.empty() || cp.rangeStart.empty() || cp.rangeEnd.empty();
+			if (stale) {
+				logMessage(WARNING, "[RESUME] Stale/foreign checkpoint, discarding.");
+				CheckpointIO::clear(cpPath);
+			}
+			else {
+				logMessage(WARNING, "[RESUME] Unfinished range found; finishing before requesting a new one.");
+
+				RangeData rdata;
+				rdata.hex = cp.hex;
+				rdata.rangeStart = cp.rangeStart;
+				rdata.rangeEnd = cp.rangeEnd;
+				rdata.targetAddress = cp.targetAddress;
+				rdata.proofOfWorkAddresses = cp.proofAddresses;
+				rdata.success = true;
+
+				PoolClient rclient(g_poolConfig);
+				if (!rclient.init()) {
+					logMessage(DANGER, "[RESUME] Pool client init failed; skipping resume.");
+					CheckpointIO::clear(cpPath);
+				}
+				else {
+					// Replay proof keys found before the crash.
+					for (const auto& pr : cp.foundProof) {
+						rclient.onKeyFound(pr.first, pr.second);
+					}
+
+					// Rebuild keyspace.
+					getKeySpace(cp.hex + cp.rangeStart + ":+" + cp.rangeEnd, bc, maxKey);
+					bc->ksNext.Set(&bc->ksStart);
+					checkKeySpace(bc, maxKey);
+
+					// Recreate address file and parse.
+					struct stat st = { 0 };
+					if (stat("ranges", &st) == -1) {
+#ifdef _WIN32
+						_mkdir("ranges");
+#else
+						mkdir("ranges", 0755);
+#endif
+					}
+					std::string maskedHex = cp.hex;
+					if (maskedHex.length() >= 2 && g_poolConfig.untrustedComputer) {
+						maskedHex[1] = '_';
+						maskedHex[maskedHex.length() - 1] = '_';
+					}
+					std::string rfile = "ranges/btcpuzzle_" + maskedHex + ".txt";
+					{
+						std::ofstream out(rfile);
+						for (const auto& a : cp.proofAddresses) out << a << "\n";
+						out << cp.targetAddress << "\n";
+					}
+					address.clear();
+					parseFile(rfile, address);
+					if (g_poolConfig.untrustedComputer) std::remove(rfile.c_str());
+
+					VanitySearch* rv = new VanitySearch(secp, address, searchMode, stop, outputFile, maxFound, bc);
+					rclient.startPing(rdata.hex);
+					rv->setKeyFoundCallback([&](std::string addr, std::string key) {
+						while (key.length() < 64) key = "0" + key;
+						rclient.onKeyFound(addr, key);
+						if (addr == rdata.targetAddress) {
+							printf("\n*** TARGET KEY FOUND (during resume)! ***\n");
+							rclient.notifyTargetFound(addr, key);
+							std::string fn = "WINNER_" + addr.substr(0, 8) + ".txt";
+							std::ofstream of(fn);
+							if (of.is_open()) {
+								of << "Target Address: " << addr << "\n\n";
+								if (g_poolConfig.untrustedComputer)
+									of << "Private Key: " << rclient.encryptData(key) << "\n";
+								else
+									of << "Private Key: " << key << "\n";
+							}
+						}
+					});
+
+					Int rOff; rOff.SetInt32(0);
+					if (!cp.offsetHex.empty()) rOff.SetBase16((char*)cp.offsetHex.c_str());
+					rv->setResume(rOff, cp.numThreads);
+
+					// Keep checkpointing DURING the resume scan too, so a crash mid-resume
+					// doesn't restart the whole remainder. off is already absolute.
+					if (g_poolConfig.saveProgress) {
+						rv->setProgressCallback([&](Int& off, int n) {
+							Checkpoint cp2;
+							cp2.puzzle = g_poolConfig.targetPuzzle;
+							cp2.hex = rdata.hex;
+							cp2.rangeStart = rdata.rangeStart;
+							cp2.rangeEnd = rdata.rangeEnd;
+							cp2.targetAddress = rdata.targetAddress;
+							cp2.proofAddresses = rdata.proofOfWorkAddresses;
+							cp2.numThreads = n;
+							cp2.offsetHex = off.GetBase16();
+							cp2.foundProof = rclient.getFoundProofPairs(rdata);
+							CheckpointIO::save(cpPath, cp2);
+						});
+					}
+
+					rv->Search(gpuId, gridSize);
+					rclient.stopPing();
+
+					if (rclient.hasAllProofKeys(rdata)) {
+						auto proofKeys = rclient.getProofKeys(rdata);
+						bool done = false;
+						for (int attempt = 1; attempt <= 3 && !done; attempt++) {
+							if (rclient.submitRange(rdata.hex, proofKeys)) {
+								rclient.notifyRangeScanned(rdata.hex);
+								logMessage(SUCCESS, "[RESUME] Finished range submitted.");
+								done = true;
+							}
+							else {
+								logMessage(DANGER, "[RESUME] Submit failed, retrying...");
+								std::this_thread::sleep_for(std::chrono::seconds(5));
+							}
+						}
+						if (!done) {
+							std::string errFile = "FLAG_ERROR_" + rdata.hex + ".txt";
+							std::ofstream eo(errFile);
+							if (eo.is_open()) {
+								eo << "Range: " << rdata.hex << "\n";
+								for (auto& k : proofKeys) eo << k << "\n";
+							}
+							logMessage(WARNING, "[RESUME] Pool did not accept the range; proof keys backed up.");
+						}
+					}
+					else {
+						logMessage(DANGER, "[RESUME] Not all proof keys after re-scan; discarding.");
+					}
+
+					delete rv;
+					rclient.reset();
+					CheckpointIO::clear(cpPath);
+				}
+			}
+		}
+	}
+
+	// Reset the address list after any resume scan before entering the main loop.
+	address.clear();
 
 	int loops = 0;
 	while (true)
@@ -876,6 +1044,22 @@ int main(int argc, char* argv[]) {
 
 				}
 				});
+
+			if (g_poolConfig.saveProgress) {
+				v->setProgressCallback([&](Int& off, int n) {
+					Checkpoint cp;
+					cp.puzzle = g_poolConfig.targetPuzzle;
+					cp.hex = rangeData.hex;
+					cp.rangeStart = rangeData.rangeStart;
+					cp.rangeEnd = rangeData.rangeEnd;
+					cp.targetAddress = rangeData.targetAddress;
+					cp.proofAddresses = rangeData.proofOfWorkAddresses;
+					cp.numThreads = n;
+					cp.offsetHex = off.GetBase16();
+					cp.foundProof = client.getFoundProofPairs(rangeData);
+					CheckpointIO::save(cpPath, cp);
+				});
+			}
 		}
 
 		// Start search
@@ -961,6 +1145,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			// Clean up
+			if (g_poolConfig.saveProgress) CheckpointIO::clear(cpPath);
 			client.reset();
 			loops++;
 

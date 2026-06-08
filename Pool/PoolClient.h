@@ -9,6 +9,8 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <mutex>
+#include <utility>
 #include <curl/curl.h>
 #include "PoolConfig.h"
 #include <openssl/sha.h>
@@ -49,6 +51,7 @@ private:
     std::string currentRangeHex;
 
     std::map<std::string, FoundKey> foundKeys;
+    std::mutex foundKeysMutex;
     int rangesScanned;
     int keysFound;
     time_t startTime;
@@ -111,6 +114,8 @@ public:
 
     // Get list of found proof keys
     std::vector<std::string> getProofKeys(const RangeData& range);
+    // (address, privKeyHex) pairs for proof addresses found so far (for checkpointing)
+    std::vector<std::pair<std::string, std::string>> getFoundProofPairs(const RangeData& range);
     std::string encryptData(const std::string& data);
     
 

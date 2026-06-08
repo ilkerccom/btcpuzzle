@@ -41,6 +41,9 @@ public:
     std::string customRange = "none";
     std::string securityHash = "";
 
+    // Save/resume scan progress to disk (resume an interrupted range on restart)
+    bool saveProgress = true;
+
     // Application code hash
     std::string appCodeHash = "";
 

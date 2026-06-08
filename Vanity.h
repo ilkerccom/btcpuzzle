@@ -97,6 +97,16 @@ public:
 		keyCallback = cb;
 	}
 
+	// Progress persistence (pool save/resume)
+	typedef std::function<void(Int&, int)> ProgressCallback;
+	void setProgressCallback(ProgressCallback cb) { progressCallback = cb; }
+	// Resume an interrupted range: shift each GPU thread by `offset` if the thread
+	// count matches `expectedThreads`; otherwise FindKeyGPU falls back to a full re-scan.
+	void setResume(Int& offset, int expectedThreads) {
+		resumeOffset.Set(&offset);
+		resumeExpectedThreads = expectedThreads;
+	}
+
 private:
 
 	std::string GetHex(std::vector<unsigned char>& buffer);
@@ -133,6 +143,11 @@ private:
 	uint64_t      counters[256];
 	double startTime;
 	KeyFoundCallback keyCallback;
+	ProgressCallback progressCallback;
+	Int resumeOffset;
+	Int appliedResumeOffset;
+	int resumeExpectedThreads;
+	int savedNumThreads;
 	int searchType;
 	int searchMode;
 	bool stopWhenFound;
@@ -149,7 +164,6 @@ private:
 	std::vector<std::string>& inputAddresses;
 
 	BITCRACK_PARAM* bc;
-	void saveProgress(TH_PARAM* p, Int& lastSaveKey, BITCRACK_PARAM* bc);
 
 	Int firstGPUThreadLastPrivateKey;
 

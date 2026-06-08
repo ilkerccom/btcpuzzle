@@ -37,6 +37,7 @@
     <ClInclude Include="SECP256k1.h" />
     <ClInclude Include="Timer.h" />
     <ClInclude Include="Vanity.h" />
+    <ClInclude Include="RangeMath.h" />
     <ClInclude Include="Base58.h" />
     <ClInclude Include="GPU\GPUHash.h">
       <Filter>GPU</Filter>
@@ -59,6 +60,9 @@
       <Filter>Pool</Filter>
     </ClInclude>
     <ClInclude Include="Pool\PoolConfig.h">
+      <Filter>Pool</Filter>
+    </ClInclude>
+    <ClInclude Include="Pool\Checkpoint.h">
       <Filter>Pool</Filter>
     </ClInclude>
   </ItemGroup>
@@ -89,6 +93,7 @@
     <ClCompile Include="SECP256K1.cpp" />
     <ClCompile Include="Timer.cpp" />
     <ClCompile Include="Vanity.cpp" />
+    <ClCompile Include="RangeMath.cpp" />
     <ClCompile Include="Base58.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Bech32.cpp" />
@@ -100,6 +105,9 @@
       <Filter>Pool</Filter>
     </ClCompile>
     <ClCompile Include="Pool\PoolConfig.cpp">
+      <Filter>Pool</Filter>
+    </ClCompile>
+    <ClCompile Include="Pool\Checkpoint.cpp">
       <Filter>Pool</Filter>
     </ClCompile>
     <ClCompile Include="local.props" />

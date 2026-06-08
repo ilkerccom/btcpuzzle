@@ -98,6 +98,12 @@ bool PoolClient::init() {
 	else {
 		logMessage(WARNING, "Save Key To Account  => Disabled");
 	}
+	if (config.saveProgress) {
+		logMessage(INFO, "Save Progress        => Enabled");
+	}
+	else {
+		logMessage(WARNING, "Save Progress        => Disabled");
+	}
 	std::cout << "========================================" << std::endl;
 
 	// Pool client init
@@ -492,8 +498,11 @@ void PoolClient::onKeyFound(const std::string& address, const std::string& priva
 	fk.isReward = false;
 	fk.isTarget = false;
 
-	foundKeys[address] = fk;
-	keysFound++;
+	{
+		std::lock_guard<std::mutex> lk(foundKeysMutex);
+		foundKeys[address] = fk;
+		keysFound++;
+	}
 
 	std::cout << "[+] Key found: " << address << std::endl;
 
@@ -502,6 +511,7 @@ void PoolClient::onKeyFound(const std::string& address, const std::string& priva
 }
 
 bool PoolClient::hasAllProofKeys(const RangeData& range) {
+	std::lock_guard<std::mutex> lk(foundKeysMutex);
 	int found = 0;
 	for (const auto& addr : range.proofOfWorkAddresses) {
 		if (foundKeys.find(addr) != foundKeys.end()) {
@@ -512,6 +522,7 @@ bool PoolClient::hasAllProofKeys(const RangeData& range) {
 }
 
 std::vector<std::string> PoolClient::getProofKeys(const RangeData& range) {
+	std::lock_guard<std::mutex> lk(foundKeysMutex);
 	std::vector<std::string> proofKeys;
 	for (const auto& addr : range.proofOfWorkAddresses) {
 		if (foundKeys.find(addr) != foundKeys.end()) {
@@ -519,6 +530,18 @@ std::vector<std::string> PoolClient::getProofKeys(const RangeData& range) {
 		}
 	}
 	return proofKeys;
+}
+
+std::vector<std::pair<std::string, std::string>> PoolClient::getFoundProofPairs(const RangeData& range) {
+	std::lock_guard<std::mutex> lk(foundKeysMutex);
+	std::vector<std::pair<std::string, std::string>> pairs;
+	for (const auto& addr : range.proofOfWorkAddresses) {
+		auto it = foundKeys.find(addr);
+		if (it != foundKeys.end()) {
+			pairs.emplace_back(addr, it->second.privateKey);
+		}
+	}
+	return pairs;
 }
 
 bool PoolClient::notifyWorkerStarted() {
