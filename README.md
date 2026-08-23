@@ -1,4 +1,4 @@
-# Official Client for [btcpuzzle.info](https://btcpuzzle.info)
+Dingwall Official Client for [btcpuzzle.info](https://btcpuzzle.info)
 
 Created for btcpuzzle.info by [ilkerccom](https://github.com/ilkerccom), a bitcoin puzzle platform. Visit Btcpuzzle.info for a user guide. You can find all the necessary explanations on the website.
 
