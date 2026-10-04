@@ -18,6 +18,7 @@
 #ifndef SHA512_H
 #define SHA512_H
 #include <string>
+#include <cstdint>
 
 void sha512(unsigned char *input, int length, unsigned char *digest);
 void pbkdf2_hmac_sha512(uint8_t *out, size_t outlen,const uint8_t *passwd, size_t passlen,const uint8_t *salt, size_t saltlen,uint64_t iter);

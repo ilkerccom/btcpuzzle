@@ -1,0 +1,20 @@
+name: Secure build
+
+on:
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build upstream-compatible CUDA container
+        run: |
+          docker build \
+            --build-arg BUILD_HASH="secure-ci-${GITHUB_SHA}" \
+            -t btcpuzzle-secure:${GITHUB_SHA} \
+            .
